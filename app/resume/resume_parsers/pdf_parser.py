@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from app.text_extractor.pdf_extractor import extract_pdf
-from app.text_extractor.text_cleaner import clean_text
-from app.text_extractor.img_extractor import extract_image
+from app.resume.resume_text_extractor.pdf_extractor import extract_pdf
+from app.resume.resume_text_extractor.text_cleaner import clean_text
+from app.resume.resume_text_extractor.img_extractor import extract_image
 
 def get_resume_text()->str:
-    project_root = Path(__file__).resolve().parent.parent.parent
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
     resume_path = project_root / "samples" / "resume.pdf"
 
     try:

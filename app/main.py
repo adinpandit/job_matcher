@@ -1,7 +1,7 @@
-from app.parsers.pdf_parser import get_resume_text
-from app.parsers.resume_parser import parse_resume
-from app.skills.skill_extractor import extract_skill
-from app.skills.skill_normalizer import normalize_skills
+from app.resume.resume_parsers.pdf_parser import get_resume_text
+from app.resume.resume_parsers.resume_parser import parse_resume
+from app.resume.resume_skills.skill_extractor import extract_skill
+from app.resume.resume_skills.skill_normalizer import normalize_skills
 
 def main():
 

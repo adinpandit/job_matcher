@@ -1,4 +1,5 @@
 import re
+from app.Job_description.jd_skill_extractor import extract_jd_skills
 
 SECTION_ALIASES = {
     "requirements": [
@@ -224,72 +225,56 @@ def extract_job_title(text:str)->str:
             if match:
                 return match.group(1).strip()
 
+    # Intro sentence such as "We are looking for an AI/ML Backend Engineering
+    # Intern to help build ...": capture just the role, not the whole paragraph.
+    intro_patterns = [
+        r"(?:looking for|seeking|hiring)\s+(?:an?|the)\s+(.+?)\s+(?:to|who|that|which)\b",
+    ]
+
     for line in lines:
-        if len(line) >= 5:
+        for pattern in intro_patterns:
+            match = re.search(pattern,line,re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+
+    for line in lines:
+        if len(line) >= 5 and identify_sections(line) is None:
             return line
-        
+
     return line[0]
 
 
 def parse_jd(text: str) -> dict:
-    if not text:
-
-        return {
-            "title": "",
-            "required_skills": [],
-            "preferred_skills": [],
-            "min_experience_years":0,
-            "max_experience_years":None,
-            "experience_required": False,
-            "education_required": False,
-            "sections": {}
-        }
 
     sections = parse_section(text)
 
-    experience_text = sections.get(
-        "experience",
-        ""
+    title = extract_job_title(text)
+
+    required_years = extract_required_years(
+        sections.get("experience", "")
     )
 
-    requirements_text = sections.get(
-        "requirements",
-        ""
+    experience_required = bool(
+        sections.get("experience", "").strip()
     )
 
-    education_text = sections.get(
-        "education",
-        ""
+    education_required = bool(
+        sections.get("education", "").strip()
     )
 
-    if not experience_text:
-        experience_text = requirements_text
-
-    if not education_text:
-        education_text = requirements_text
-
-    min_experience_years,max_experience_years = (extract_required_years(experience_text))
-
-    experience_required = (min_experience_years > 0)
-
-    education_required = bool(education_text)
+    jd_skills = extract_jd_skills(sections)
 
     return {
-        "title": extract_job_title(text),
+        "title": title,
 
-        "required_skills": [],
+        "required_skills": jd_skills["required_skills"],
+        "preferred_skills": jd_skills["preferred_skills"],
 
-        "preferred_skills": [],
-
-        "min_experience_years": min_experience_years,
-
-        "max_experience_years": max_experience_years,
-
+        "required_years": required_years,
         "experience_required": experience_required,
-
         "education_required": education_required,
 
-        "sections": sections
+        "sections": sections,
     }
 
 

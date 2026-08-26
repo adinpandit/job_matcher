@@ -3,6 +3,7 @@ from app.resume.resume_parsers.resume_parser import parse_resume
 from app.resume.resume_skills.skill_extractor import extract_skill
 from app.resume.resume_skills.skill_normalizer import normalize_skills
 from app.Job_description.jd_parser import parse_jd
+from app.Job_description.jd_skill_extractor import extract_jd_skills
 from samples.jd import jd
 
 def main():
@@ -22,7 +23,7 @@ def main():
     print(normalized_skills)
 
     print("\n")
-    
+
     parsed_jd = parse_jd(jd)
 
     print(parsed_jd)

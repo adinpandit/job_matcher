@@ -5,6 +5,7 @@ from app.resume.resume_skills.skill_normalizer import normalize_skills
 from app.Job_description.jd_parser import parse_jd
 from app.Job_description.jd_skill_extractor import extract_jd_skills
 from samples.jd import jd
+from app.exact_matcher import exact_match
 
 def main():
 
@@ -27,6 +28,14 @@ def main():
     parsed_jd = parse_jd(jd)
 
     print(parsed_jd)
+
+    print("\n")
+
+    jd_skills = extract_jd_skills(parsed_jd["sections"])
+
+    exact_matched_skills = exact_match(normalized_skills,jd_skills["required_skills"],jd_skills["preferred_skills"])
+
+    print(exact_matched_skills)
 
 if __name__ == "__main__":
     main()

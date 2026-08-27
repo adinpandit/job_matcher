@@ -139,7 +139,6 @@ SKILL_ALIASES = {
 
     # NumPy
     "numpy": "numpy",
-    "numpy": "numpy",
     "np": "numpy",
 }
 

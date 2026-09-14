@@ -6,6 +6,7 @@ from app.Job_description.jd_parser import parse_jd
 from app.Job_description.jd_skill_extractor import extract_jd_skills
 from samples.jd import jd
 from app.exact_matcher import exact_match
+from app.semantic_matcher import semantic_match
 
 def main():
 
@@ -36,6 +37,12 @@ def main():
     exact_matched_skills = exact_match(normalized_skills,jd_skills["required_skills"],jd_skills["preferred_skills"])
 
     print(exact_matched_skills)
+
+    print("\n")
+
+    matches = semantic_match(parsed_resume , parsed_jd)
+
+    print(matches)
 
 if __name__ == "__main__":
     main()

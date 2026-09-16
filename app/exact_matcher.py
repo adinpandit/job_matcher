@@ -39,3 +39,94 @@ def exact_match(
         "required_score":round(required_score,2),
         "preferred_score":round(preferred_score,2)
     }
+
+def match_requirements(resume:dict,jd_requirements:list[dict])->list[dict]:
+
+    resume_skills = set(normalize_skills(resume.get("skills",[])))
+
+    resume_evidence = resume.get("evidence",[])
+
+    results = []
+
+    for index,requirement in enumerate(jd_requirements,start = 1):
+
+        requirement_text = requirement.get("text","")
+        requirement_type = requirement.get("type","general")
+        importance = requirement.get("importance","required")
+
+        requirement_skills = set(normalize_skills(requirement.get("skills",[])))
+
+        matched_skills = requirement_skills & resume_skills
+        missing_skills = requirement_skills - resume_skills
+
+        evidence = []
+
+        for item in resume_evidence:
+
+            evidence_skills = set(normalize_skills(item.get("skills",[])))
+
+            matched_evidence_skills = (evidence_skills & matched_skills)
+
+            if matched_skills:
+
+                evidence.append({
+                    "text":item.get("text",""),
+                    "type":item.get("type"),
+                    "source":item.get("source"),
+                    "matched_skills":sorted(matched_evidence_skills),
+                })
+        if not requirement_skills:
+
+            status = "NO_EXACT_SKILLS"
+
+            match_score = None
+
+        elif matched_skills == requirement_skills:
+
+            status = "MATCH"
+
+            match_score = 1.0
+
+        elif matched_skills:
+
+            status = "PARTIAL"
+
+            match_score = (len(matched_skills)/len(requirement_skills))
+
+        else:
+
+            status = "Missing"
+
+            match_score = 0.0
+
+        result = {
+            "id": f"req_{index:03d}",
+
+            "text": requirement_text,
+
+            "type": requirement_type,
+
+            "importance": importance,
+
+            "skills": sorted(requirement_skills),
+
+            "exact_match": {
+                "matched_skills": sorted(matched_skills),
+                "missing_skills": sorted(missing_skills),
+            },
+
+            "status": status,
+
+            "match_score": (
+                round(match_score, 2)
+                if match_score is not None
+                else None
+            ),
+
+            "evidence": evidence,
+        }
+
+        results.append(result)
+
+    return results
+                                  

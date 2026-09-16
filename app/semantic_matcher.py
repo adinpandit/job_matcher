@@ -1,108 +1,408 @@
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def create_embeddings(texts: dict[str]):
+MODEL_NAME = "all-MiniLM-L6-v2"
+
+model = SentenceTransformer(MODEL_NAME)
+
+
+# Initial V1 thresholds.
+# These should eventually be calibrated using labeled
+# resume/JD matching examples.
+SEMANTIC_THRESHOLDS = {
+    "hard_skill": 0.60,
+    "responsibility": 0.55,
+    "soft_skill": 0.55,
+    "general": 0.55,
+    "education": 0.65,
+    "experience_years": 0.70,
+}
+
+
+# Small source preference used only for ranking.
+# Semantic similarity remains the primary signal.
+SOURCE_WEIGHTS = {
+    "experience": 1.00,
+    "project": 0.95,
+    "education": 0.90,
+    "achievement": 0.85,
+    "skills": 0.80,
+    "unknown": 0.80,
+}
+
+
+def create_embeddings(texts: list[str]):
+    """
+    Create normalized embeddings for a list of texts.
+
+    Normalization allows cosine similarity to be used
+    directly and makes the embedding representation
+    consistent across retrieval calls.
+    """
 
     if not texts:
-        return {}
+        return []
 
     return model.encode(
         texts,
-        convert_to_numpy=True
+        convert_to_numpy=True,
+        normalize_embeddings=True,
     )
 
-def build_resume_items(resume:dict)->list[dict]:
+
+def build_resume_evidence(resume: dict) -> list[dict]:
+    """
+    Build the semantic-searchable evidence collection
+    from the current parsed resume.
+
+    Expected resume structure:
+
+        {
+            "evidence": [
+                {
+                    "text": "...",
+                    "type": "experience",
+                    "source": "experience",
+                    "skills": [...]
+                }
+            ]
+        }
+    """
+
+    evidence = resume.get("evidence", [])
+
+    if not evidence:
+        return []
 
     resume_items = []
 
-    experience = resume.get("experience","")
-    for item in experience.splitlines():
-        if item.strip():
-            resume_items.append({
-                "type":"experience",
-                "text":item.strip()
-            })
+    for item in evidence:
 
-    projects = resume.get("projects","")
-    for item in projects.splitlines():
-        if item.strip():
-            resume_items.append({
-                "type":"project",
-                "text":item.strip()
-            })
+        text = item.get("text", "").strip()
+
+        if not text:
+            continue
+
+        resume_items.append(
+            {
+                "text": text,
+                "type": item.get("type", "unknown"),
+                "source": item.get("source", "unknown"),
+                "skills": item.get("skills", []),
+            }
+        )
 
     return resume_items
 
-def build_jd_items(jd:dict)->list[dict]:
+
+def build_jd_requirements(jd: dict) -> list[dict]:
+    """
+    Build the semantic-searchable JD requirement collection
+    from the current parsed JD.
+
+    Expected structure:
+
+        {
+            "requirements": [
+                {
+                    "text": "...",
+                    "type": "hard_skill",
+                    "importance": "required",
+                    "skills": [...]
+                }
+            ]
+        }
+    """
+
+    requirements = jd.get("requirements", [])
+
+    if not requirements:
+        return []
 
     jd_items = []
 
-    requirements = jd.get("sections",{}).get("requirements","")
-    for item in requirements.splitlines():
-        jd_items.append({
-            "type":"requirements",
-            "text":item.strip()
-        })
+    for index, requirement in enumerate(
+        requirements,
+        start=1,
+    ):
 
-    responsibilities = jd.get("sections",{}).get("responsibilities","")
-    for item in responsibilities.splitlines():
-        jd_items.append({
-            "type":"responsibilites",
-            "text":item.strip()
-        })
+        text = requirement.get("text", "").strip()
+
+        if not text:
+            continue
+
+        jd_items.append(
+            {
+                "id": f"req_{index:03d}",
+                "text": text,
+                "type": requirement.get(
+                    "type",
+                    "general",
+                ),
+                "importance": requirement.get(
+                    "importance",
+                    "required",
+                ),
+                "skills": requirement.get(
+                    "skills",
+                    [],
+                ),
+            }
+        )
 
     return jd_items
 
-def find_best_match(jd_items:list[dict] , resume_items:list[dict] , threshold:float=0.50) -> list[dict]:
 
-    if not jd_items or not resume_items:
+def get_threshold(requirement_type: str) -> float:
+    """
+    Get the semantic retrieval threshold for a requirement type.
+    """
+
+    return SEMANTIC_THRESHOLDS.get(
+        requirement_type,
+        SEMANTIC_THRESHOLDS["general"],
+    )
+
+
+def get_source_weight(source: str) -> float:
+    """
+    Get a small ranking preference for the source of evidence.
+
+    This does NOT determine whether evidence satisfies a
+    requirement. It only helps rank equally relevant evidence.
+    """
+
+    return SOURCE_WEIGHTS.get(
+        source,
+        SOURCE_WEIGHTS["unknown"],
+    )
+
+
+def calculate_retrieval_score(
+    similarity: float,
+    source: str,
+) -> float:
+    """
+    Calculate a source-aware retrieval score.
+
+    Similarity remains the primary signal.
+    """
+
+    return similarity * get_source_weight(source)
+
+
+def find_semantic_matches(
+    jd_requirements: list[dict],
+    resume_evidence: list[dict],
+    top_k: int = 3,
+) -> list[dict]:
+    """
+    Retrieve the top-K semantically relevant resume evidence
+    for every JD requirement.
+
+    This function performs RETRIEVAL only.
+
+    It does not decide:
+        MATCH
+        PARTIAL
+        MISSING
+
+    That decision belongs to the analyzer layer.
+    """
+
+    if not jd_requirements or not resume_evidence:
         return []
 
-    jd_text = []
+    # ------------------------------------------------------
+    # Create embedding inputs
+    # ------------------------------------------------------
 
-    for item in jd_items:
-        jd_text.append(item["text"])
+    jd_texts = [
+        requirement["text"]
+        for requirement in jd_requirements
+    ]
 
-    resume_text = []
+    resume_texts = [
+        evidence["text"]
+        for evidence in resume_evidence
+    ]
 
-    for item in resume_items:
-        resume_text.append(item["text"])
+    # ------------------------------------------------------
+    # Generate embeddings
+    # ------------------------------------------------------
 
-    jd_embeddings = create_embeddings(jd_text)
-    resume_embeddings = create_embeddings(resume_text)
+    jd_embeddings = create_embeddings(jd_texts)
 
-    similarity_matrix = cosine_similarity(jd_embeddings,resume_embeddings)
+    resume_embeddings = create_embeddings(
+        resume_texts
+    )
+
+    # ------------------------------------------------------
+    # Calculate all JD → Resume similarities
+    # ------------------------------------------------------
+
+    similarity_matrix = cosine_similarity(
+        jd_embeddings,
+        resume_embeddings,
+    )
 
     matches = []
 
-    for i,jd_item in enumerate(jd_items):
+    # ------------------------------------------------------
+    # Process every JD requirement independently
+    # ------------------------------------------------------
 
-        best_index = similarity_matrix[i].argmax()
+    for requirement_index, requirement in enumerate(
+        jd_requirements
+    ):
 
-        best_score = float(similarity_matrix[i][best_index])
+        similarity_scores = similarity_matrix[
+            requirement_index
+        ]
 
-        best_resume_item = resume_items[best_index]
+        threshold = get_threshold(
+            requirement["type"]
+        )
 
-        matches.append({
-            "jd_requirement":jd_item["text"],
-            "jd_type":jd_item["type"],
+        # --------------------------------------------------
+        # Rank resume evidence
+        # --------------------------------------------------
 
-            "resume_evidence":best_resume_item["text"],
-            "resume_source":best_resume_item["type"],
+        ranked_indices = sorted(
+            range(len(resume_evidence)),
+            key=lambda index: calculate_retrieval_score(
+                float(similarity_scores[index]),
+                resume_evidence[index]["source"],
+            ),
+            reverse=True,
+        )
 
-            "similarity":round(best_score,3),
-            "matched":best_score >= threshold
-        })
+        top_evidence = []
+
+        # --------------------------------------------------
+        # Retrieve top-K evidence
+        # --------------------------------------------------
+
+        for resume_index in ranked_indices[:top_k]:
+
+            evidence = resume_evidence[
+                resume_index
+            ]
+
+            similarity = float(
+                similarity_scores[resume_index]
+            )
+
+            retrieval_score = calculate_retrieval_score(
+                similarity,
+                evidence["source"],
+            )
+
+            top_evidence.append(
+                {
+                    "text": evidence["text"],
+                    "type": evidence["type"],
+                    "source": evidence["source"],
+                    "skills": evidence["skills"],
+                    "similarity": round(
+                        similarity,
+                        3,
+                    ),
+                    "retrieval_score": round(
+                        retrieval_score,
+                        3,
+                    ),
+                    "above_threshold": (
+                        similarity >= threshold
+                    ),
+                }
+            )
+
+        # --------------------------------------------------
+        # Keep only semantically relevant evidence
+        # --------------------------------------------------
+
+        relevant_evidence = [
+            evidence
+            for evidence in top_evidence
+            if evidence["above_threshold"]
+        ]
+
+        # --------------------------------------------------
+        # Best semantic similarity
+        # --------------------------------------------------
+
+        if relevant_evidence:
+
+            best_similarity = max(
+                evidence["similarity"]
+                for evidence in relevant_evidence
+            )
+
+        else:
+
+            best_similarity = 0.0
+
+        matches.append(
+            {
+                "requirement_id": requirement["id"],
+                "requirement": requirement["text"],
+                "requirement_type": requirement["type"],
+                "importance": requirement["importance"],
+                "skills": requirement["skills"],
+
+                "threshold": threshold,
+
+                "best_similarity": round(
+                    best_similarity,
+                    3,
+                ),
+
+                "semantic_evidence": relevant_evidence,
+
+                "has_semantic_evidence": bool(
+                    relevant_evidence
+                ),
+            }
+        )
 
     return matches
 
 
-def semantic_match(resume:dict , jd: dict , threshold:float = 0.50)->list[dict]:
+def semantic_match(
+    resume: dict,
+    jd: dict,
+    top_k: int = 3,
+) -> list[dict]:
+    """
+    Main semantic matching pipeline.
 
-    resume_items = build_resume_items(resume)
+    Parsed Resume
+        ↓
+    Resume Evidence
+        ↓
+    Parsed JD
+        ↓
+    JD Requirements
+        ↓
+    Embeddings
+        ↓
+    Cosine Similarity
+        ↓
+    Top-K Resume Evidence
+    """
 
-    jd_items = build_jd_items(jd)
+    resume_evidence = build_resume_evidence(
+        resume
+    )
 
-    return find_best_match(jd_items ,resume_items, threshold)
+    jd_requirements = build_jd_requirements(
+        jd
+    )
+
+    return find_semantic_matches(
+        jd_requirements=jd_requirements,
+        resume_evidence=resume_evidence,
+        top_k=top_k,
+    )

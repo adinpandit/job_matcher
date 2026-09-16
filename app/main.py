@@ -1,48 +1,98 @@
 from app.resume.resume_parsers.pdf_parser import get_resume_text
 from app.resume.resume_parsers.resume_parser import parse_resume
-from app.resume.resume_skills.skill_extractor import extract_skill
-from app.resume.resume_skills.skill_normalizer import normalize_skills
+
 from app.Job_description.jd_parser import parse_jd
-from app.Job_description.jd_skill_extractor import extract_jd_skills
+
 from samples.jd import jd
-from app.exact_matcher import exact_match
-from app.semantic_matcher import semantic_match
+
 
 def main():
 
-    cleaned_text = get_resume_text()
+    # ========================================================
+    # RESUME
+    # ========================================================
 
-    if not cleaned_text:
-        print("could not extract resume text.")
-        return
+    print("\n" + "=" * 60)
+    print("RESUME")
+    print("=" * 60)
 
-    parsed_resume = parse_resume(cleaned_text)
+    resume_text = get_resume_text()
 
-    resume_skills = extract_skill(parsed_resume)
+    print("\nEXTRACTED RESUME TEXT\n")
+    print(resume_text)
 
-    normalized_skills = normalize_skills(resume_skills)
+    parsed_resume = parse_resume(resume_text)
 
-    print(normalized_skills)
+    print("\n" + "=" * 60)
+    print("PARSED RESUME")
+    print("=" * 60)
 
-    print("\n")
+    print("\nName:")
+    print(parsed_resume.get("name", ""))
+
+    print("\nContact:")
+    print(parsed_resume.get("contact", {}))
+
+    print("\nSkills:")
+    print(parsed_resume.get("skills", []))
+
+    print("\nExperience:")
+    for experience in parsed_resume.get("experience", []):
+        print(experience)
+
+    print("\nProjects:")
+    for project in parsed_resume.get("projects", []):
+        print(project)
+
+    print("\nEducation:")
+    for education in parsed_resume.get("education", []):
+        print(education)
+
+    print("\nEvidence:")
+    for evidence in parsed_resume.get("evidence", []):
+        print(evidence)
+
+
+    # ========================================================
+    # JOB DESCRIPTION
+    # ========================================================
+
+    print("\n" + "=" * 60)
+    print("JOB DESCRIPTION")
+    print("=" * 60)
 
     parsed_jd = parse_jd(jd)
 
-    print(parsed_jd)
+    print("\nTitle:")
+    print(parsed_jd.get("title", ""))
 
-    print("\n")
+    print("\nRequirements:")
+    for requirement in parsed_jd.get("requirements", []):
+        print(requirement)
 
-    jd_skills = extract_jd_skills(parsed_jd["sections"])
+    print("\nRequired Skills:")
+    print(parsed_jd.get("required_skills", []))
 
-    exact_matched_skills = exact_match(normalized_skills,jd_skills["required_skills"],jd_skills["preferred_skills"])
+    print("\nPreferred Skills:")
+    print(parsed_jd.get("preferred_skills", []))
 
-    print(exact_matched_skills)
+    print("\nRequired Years:")
+    print(parsed_jd.get("required_years"))
 
-    print("\n")
+    print("\nExperience Required:")
+    print(parsed_jd.get("experience_required"))
 
-    matches = semantic_match(parsed_resume , parsed_jd)
+    print("\nEducation Required:")
+    print(parsed_jd.get("education_required"))
 
-    print(matches)
+    print("\nSections:")
+    for section, items in parsed_jd.get("sections", {}).items():
+
+        print(f"\n{section.upper()}:")
+
+        for item in items:
+            print(f"- {item}")
+
 
 if __name__ == "__main__":
     main()
